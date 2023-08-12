@@ -2,6 +2,8 @@ extern crate libc;
 extern crate nix;
 extern crate url;
 
+use nix::sys::{epoll, signal, signalfd};
+use nix::unistd;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
@@ -16,16 +18,16 @@ struct SignalfdSiginfo {
 }
 
 fn create_signalfd() -> nix::Result<RawFd> {
-    let mut mask = nix::sys::signal::SigSet::empty();
-    mask.add(nix::sys::signal::SIGINT);
-    mask.add(nix::sys::signal::SIGTERM);
+    let mut mask = signal::SigSet::empty();
+    mask.add(signal::SIGINT);
+    mask.add(signal::SIGTERM);
     mask.thread_block().unwrap();
-    nix::sys::signalfd::signalfd(-1, &mask, nix::sys::signalfd::SfdFlags::SFD_CLOEXEC)
+    signalfd::signalfd(-1, &mask, signalfd::SfdFlags::SFD_CLOEXEC)
 }
 
 fn handle_signals(signal_fd: RawFd) -> bool {
     let mut buf = vec![0u8; std::mem::size_of::<SignalfdSiginfo>()];
-    if nix::unistd::read(signal_fd, &mut buf).is_ok() {
+    if unistd::read(signal_fd, &mut buf).is_ok() {
         let info: SignalfdSiginfo = unsafe { std::ptr::read(buf.as_ptr() as *const _) };
         match info.signo {
             libc::SIGINT => {
@@ -44,7 +46,7 @@ fn handle_signals(signal_fd: RawFd) -> bool {
 }
 
 fn frame_handler(tcp: &mut TcpStream, buf: &mut [u8]) -> bool {
-    let n = nix::unistd::read(libc::STDIN_FILENO, buf).unwrap_or(0);
+    let n = unistd::read(libc::STDIN_FILENO, buf).unwrap_or(0);
     if n == 0 {
         false
     } else {
@@ -95,25 +97,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut tcp = open(url_string).unwrap();
 
-    let epoll_fd =
-        nix::sys::epoll::epoll_create1(nix::sys::epoll::EpollCreateFlags::EPOLL_CLOEXEC)?;
-    let mut read_event = nix::sys::epoll::EpollEvent::new(
-        nix::sys::epoll::EpollFlags::EPOLLIN,
-        libc::STDIN_FILENO as u64,
-    );
-    nix::sys::epoll::epoll_ctl(
+    let epoll_fd = epoll::epoll_create1(epoll::EpollCreateFlags::EPOLL_CLOEXEC)?;
+    let mut read_event =
+        epoll::EpollEvent::new(epoll::EpollFlags::EPOLLIN, libc::STDIN_FILENO as u64);
+    epoll::epoll_ctl(
         epoll_fd,
-        nix::sys::epoll::EpollOp::EpollCtlAdd,
+        epoll::EpollOp::EpollCtlAdd,
         libc::STDIN_FILENO,
         &mut read_event,
     )?;
 
     let signal_fd = create_signalfd()?;
-    let mut signal_event =
-        nix::sys::epoll::EpollEvent::new(nix::sys::epoll::EpollFlags::EPOLLIN, signal_fd as u64);
-    nix::sys::epoll::epoll_ctl(
+    let mut signal_event = epoll::EpollEvent::new(epoll::EpollFlags::EPOLLIN, signal_fd as u64);
+    epoll::epoll_ctl(
         epoll_fd,
-        nix::sys::epoll::EpollOp::EpollCtlAdd,
+        epoll::EpollOp::EpollCtlAdd,
         signal_fd,
         &mut signal_event,
     )?;
@@ -123,8 +121,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut buf = vec![0u8; pipe_max_size];
 
     loop {
-        let mut events = [nix::sys::epoll::EpollEvent::empty(); MAX_EVENT];
-        let num_events = nix::sys::epoll::epoll_wait(epoll_fd, &mut events, timeout)?;
+        let mut events = [epoll::EpollEvent::empty(); MAX_EVENT];
+        let num_events = epoll::epoll_wait(epoll_fd, &mut events, timeout)?;
         if num_events == 0 {
             println!("Timeout");
             continue;
