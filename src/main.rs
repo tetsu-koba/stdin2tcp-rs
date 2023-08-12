@@ -12,11 +12,6 @@ use url::Url;
 
 const MAX_EVENT: usize = 5;
 
-struct SignalfdSiginfo {
-    signo: libc::c_int,
-    // ... (other fields from signalfd_siginfo not included for brevity)
-}
-
 fn create_signalfd() -> nix::Result<RawFd> {
     let mut mask = signal::SigSet::empty();
     mask.add(signal::SIGINT);
@@ -26,22 +21,19 @@ fn create_signalfd() -> nix::Result<RawFd> {
 }
 
 fn handle_signals(signal_fd: RawFd) -> bool {
-    let mut buf = vec![0u8; std::mem::size_of::<SignalfdSiginfo>()];
-    if unistd::read(signal_fd, &mut buf).is_ok() {
-        let info: SignalfdSiginfo = unsafe { std::ptr::read(buf.as_ptr() as *const _) };
-        match info.signo {
-            libc::SIGINT => {
-                println!("Got SIGINT");
-                false
-            }
-            libc::SIGTERM => {
-                println!("Got SIGTERM");
-                false
-            }
-            _ => unreachable!(),
+    let mut buf = vec![0u8; std::mem::size_of::<libc::siginfo_t>()];
+    unistd::read(signal_fd, &mut buf).expect("Reading from signalfd should not fail.");
+    let signo: libc::c_int = unsafe { std::ptr::read(buf.as_ptr() as *const _) };
+    match signo {
+        libc::SIGINT => {
+            eprintln!("Got SIGINT");
+            false
         }
-    } else {
-        true
+        libc::SIGTERM => {
+            eprintln!("Got SIGTERM");
+            false
+        }
+        _ => unreachable!(),
     }
 }
 
@@ -124,7 +116,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut events = [epoll::EpollEvent::empty(); MAX_EVENT];
         let num_events = epoll::epoll_wait(epoll_fd, &mut events, timeout)?;
         if num_events == 0 {
-            println!("Timeout");
+            eprintln!("Timeout");
             continue;
         }
         for ev in &events[0..num_events] {
