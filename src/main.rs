@@ -1,9 +1,6 @@
-extern crate libc;
-extern crate nix;
-extern crate url;
-
 use nix::sys::{epoll, signal, signalfd};
 use nix::unistd;
+use std::error::Error;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
@@ -66,7 +63,7 @@ fn is_pipe(fd: RawFd) -> bool {
     }
 }
 
-fn get_pipe_max_size() -> Result<usize, Box<dyn std::error::Error>> {
+fn get_pipe_max_size() -> Result<usize, Box<dyn Error>> {
     let mut content = String::new();
     let mut file = File::open("/proc/sys/fs/pipe-max-size")?;
     file.read_to_string(&mut content)?;
@@ -74,7 +71,7 @@ fn get_pipe_max_size() -> Result<usize, Box<dyn std::error::Error>> {
     Ok(max_size)
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
         eprintln!("Usage: {} URL\nURL is 'tcp://hostname:port'", args[0]);
