@@ -11,6 +11,7 @@ pub fn is_pipe(fd: RawFd) -> bool {
 }
 
 // Get pipe max buffer size
+#[cfg(target_os = "linux")]
 pub fn get_pipe_max_size() -> Result<usize, io::Error> {
     // Read the maximum pipe size
     let mut pipe_max_size_file = File::open("/proc/sys/fs/pipe-max-size")?;
@@ -22,4 +23,9 @@ pub fn get_pipe_max_size() -> Result<usize, io::Error> {
         io::Error::new(io::ErrorKind::InvalidData, "Failed to parse max pipe size")
     })?;
     Ok(max_size)
+}
+
+#[cfg(target_os = "macos")]
+pub fn get_pipe_max_size() -> Result<usize, io::Error> {
+    Ok(64 * 1024)
 }
