@@ -7,5 +7,5 @@ edition = "2021"
 
 [dependencies]
 libc = "0.2"
-nix = "0.23"
-url = "2.2"
+nix = "0.26"
+url = "2.4"
