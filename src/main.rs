@@ -1,11 +1,11 @@
 use nix::sys::{epoll, signal, signalfd};
 use nix::unistd;
 use std::error::Error;
-use std::fs::File;
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::net::TcpStream;
 use std::os::unix::io::RawFd;
 use url::Url;
+mod pipe;
 
 const MAX_EVENT: usize = 5;
 
@@ -56,21 +56,6 @@ fn open(url_string: &str) -> io::Result<TcpStream> {
     }
 }
 
-fn is_pipe(fd: RawFd) -> bool {
-    match nix::sys::stat::fstat(fd) {
-        Ok(stat) => stat.st_mode & libc::S_IFMT == libc::S_IFIFO,
-        Err(_) => false,
-    }
-}
-
-fn get_pipe_max_size() -> Result<usize, Box<dyn Error>> {
-    let mut content = String::new();
-    let mut file = File::open("/proc/sys/fs/pipe-max-size")?;
-    file.read_to_string(&mut content)?;
-    let max_size: usize = content.trim().parse()?;
-    Ok(max_size)
-}
-
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
@@ -79,7 +64,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let url_string = &args[1];
-    if !is_pipe(libc::STDIN_FILENO) {
+    if !pipe::is_pipe(libc::STDIN_FILENO) {
         eprintln!("stdin must be pipe");
         std::process::exit(1);
     }
@@ -106,7 +91,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     )?;
 
     let timeout = 5000;
-    let pipe_max_size = get_pipe_max_size()?;
+    let pipe_max_size = pipe::get_pipe_max_size()?;
     let mut buf = vec![0u8; pipe_max_size];
 
     loop {
